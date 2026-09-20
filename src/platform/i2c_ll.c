@@ -170,19 +170,8 @@ bool I2C_LL_probe_address(
         return false;
     }
 
-    int32_t result = I2C_LL_write(
-        bus,
-        address,
-        &data,
-        0,
-        false,
-        timeout_us
-    );
-    if (result == 0) {
-        return true;
-    }
 
-    result = I2C_LL_read(
+    int32_t result = I2C_LL_read(
         bus,
         address,
         &data,
@@ -190,5 +179,7 @@ bool I2C_LL_probe_address(
         false,
         timeout_us
     );
+    
+    // If the read succeeds and returns 1 byte, the device exists!
     return result == 1;
 }
