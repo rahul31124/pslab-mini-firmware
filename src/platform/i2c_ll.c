@@ -36,9 +36,15 @@ bool I2C_LL_default_config(I2C_LL_Bus bus, I2C_LL_Config *config)
         return false;
     }
 
+    /*
+     * PIN ALLOCATION:
+     * - Bus 0: GPIO 8 (SDA), GPIO 9 (SCL) [Physical pins 11 & 12]
+     *          Leaves GPIO 0 & 1 entirely free for UART0!
+     * - Bus 1: GPIO 6 (SDA), GPIO 7 (SCL) [Physical pins 9 & 10]
+     */
     *config = (I2C_LL_Config){
-        .sda_gpio = bus == I2C_LL_BUS_0 ? 0u : 6u,
-        .scl_gpio = bus == I2C_LL_BUS_0 ? 1u : 7u,
+        .sda_gpio = (bus == I2C_LL_BUS_0) ? 8u : 6u,
+        .scl_gpio = (bus == I2C_LL_BUS_0) ? 9u : 7u,
         .rate_hz = I2C_LL_DEFAULT_RATE_HZ,
         .enable_pullups = true,
     };
