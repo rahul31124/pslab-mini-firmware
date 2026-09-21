@@ -180,6 +180,5 @@ bool I2C_LL_probe_address(
         timeout_us
     );
     
-    // If the read succeeds and returns 1 byte, the device exists!
     return result == 1;
 }
