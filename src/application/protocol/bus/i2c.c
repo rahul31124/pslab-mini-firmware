@@ -139,13 +139,16 @@ scpi_result_t scpi_cmd_bus_i2c_scan_q(scpi_t *context)
 
 scpi_result_t scpi_cmd_bus_i2c_write(scpi_t *context)
 {
+    uint32_t val;
     size_t len = 0;
 
-    if (!SCPI_ParamArrayUInt32(context, write_buffer32, I2C_GATEWAY_MAX_TRANSFER, &len, SCPI_FORMAT_ASCII, TRUE)) {
-        return result_missing_parameter(context);
+    while (SCPI_ParamUInt32(context, &val, len == 0 ? TRUE : FALSE)) {
+        if (len < I2C_GATEWAY_MAX_TRANSFER) {
+            write_buffer32[len++] = val;
+        }
     }
 
-    if (!i2c_gateway_is_open() || len == 0 || len > I2C_GATEWAY_MAX_TRANSFER) {
+    if (len == 0 || !i2c_gateway_is_open()) {
         return result_execution_error(context);
     }
 
@@ -187,29 +190,41 @@ scpi_result_t scpi_cmd_bus_i2c_read_q(scpi_t *context)
 
 scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
 {
-    char const *data = NULL;
+    uint32_t val;
     size_t len = 0;
-    uint32_t read_len = 0;
 
-    if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
-        return result_missing_parameter(context);
+    // Loop through the parameters (e.g., "170, 2" becomes an array of [170, 2])
+    while (SCPI_ParamUInt32(context, &val, len == 0 ? TRUE : FALSE)) {
+        if (len < I2C_GATEWAY_MAX_TRANSFER) {
+            write_buffer32[len++] = val;
+        }
     }
 
-    if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
-        return result_missing_parameter(context);
-    }
-
-    if (!i2c_gateway_is_open() || len > I2C_GATEWAY_MAX_TRANSFER ||
-        read_len == 0 || read_len > I2C_GATEWAY_MAX_TRANSFER) {
+    if (len < 2 || !i2c_gateway_is_open()) {
         return result_execution_error(context);
     }
 
+    uint32_t read_len = write_buffer32[len - 1];
+
+    size_t tx_len = len - 1;
+
+    if (tx_len > I2C_GATEWAY_MAX_TRANSFER || read_len == 0 || read_len > I2C_GATEWAY_MAX_TRANSFER) {
+        return result_execution_error(context);
+    }
+
+    uint8_t tx_bytes[I2C_GATEWAY_MAX_TRANSFER];
+    for (size_t i = 0; i < tx_len; ++i) {
+        tx_bytes[i] = (uint8_t)write_buffer32[i];
+    }
+
+    // Perform the Atomic I2C Transaction
     int32_t bytes_read = i2c_gateway_transact(
-        (uint8_t const *)data,
-        len,
+        tx_bytes,
+        tx_len,
         response_buffer,
         read_len
     );
+
     if (bytes_read < 0) {
         return result_execution_error(context);
     }
