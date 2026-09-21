@@ -13,7 +13,7 @@
 static uint8_t response_buffer[I2C_GATEWAY_MAX_TRANSFER];
 static uint8_t scan_addresses[I2C_GATEWAY_MAX_SCAN_RESULTS];
 static char scan_text[I2C_GATEWAY_MAX_SCAN_RESULTS * 3];
-static uint32_t write_buffer32[I2C_GATEWAY_MAX_TRANSFER];
+
 static scpi_result_t result_ok(void) { return SCPI_RES_OK; }
 
 static scpi_result_t result_missing_parameter(scpi_t *context)
@@ -139,24 +139,23 @@ scpi_result_t scpi_cmd_bus_i2c_scan_q(scpi_t *context)
 
 scpi_result_t scpi_cmd_bus_i2c_write(scpi_t *context)
 {
-    uint32_t val;
+    char const *data = NULL;
     size_t len = 0;
 
-    while (SCPI_ParamUInt32(context, &val, len == 0 ? TRUE : FALSE)) {
-        if (len < I2C_GATEWAY_MAX_TRANSFER) {
-            write_buffer32[len++] = val;
-        }
+    if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
+        return result_missing_parameter(context);
     }
 
-    if (len > 0 && i2c_gateway_is_open()) {
-        uint8_t bytes[I2C_GATEWAY_MAX_TRANSFER];
-        for (size_t i = 0; i < len; ++i) {
-            bytes[i] = (uint8_t)write_buffer32[i];
-        }
-        
-        i2c_gateway_write(bytes, len);
+    if (!i2c_gateway_is_open() || len > I2C_GATEWAY_MAX_TRANSFER) {
+        return result_execution_error(context);
     }
 
+    int32_t written = i2c_gateway_write((uint8_t const *)data, len);
+    if (written < 0) {
+        return result_execution_error(context);
+    }
+
+    SCPI_ResultUInt32(context, (uint32_t)written);
     return SCPI_RES_OK;
 }
 
@@ -184,39 +183,31 @@ scpi_result_t scpi_cmd_bus_i2c_read_q(scpi_t *context)
 
 scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
 {
-    uint32_t val;
+    char const *data = NULL;
     size_t len = 0;
+    uint32_t read_len = 0;
 
-    while (SCPI_ParamUInt32(context, &val, len == 0 ? TRUE : FALSE)) {
-        if (len < I2C_GATEWAY_MAX_TRANSFER) {
-            write_buffer32[len++] = val;
-        }
+    if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
+        return result_missing_parameter(context);
     }
 
-    if (len < 2 || !i2c_gateway_is_open()) {
-        SCPI_ResultArbitraryBlock(context, response_buffer, 0);
-        return SCPI_RES_OK; // V6 INSPIRATION: Return empty block, NO ERROR
+    if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
+        return result_missing_parameter(context);
     }
 
-    uint32_t read_len = write_buffer32[len - 1];
-    size_t tx_len = len - 1;
-
-    if (tx_len > I2C_GATEWAY_MAX_TRANSFER || read_len == 0 || read_len > I2C_GATEWAY_MAX_TRANSFER) {
-        SCPI_ResultArbitraryBlock(context, response_buffer, 0);
-        return SCPI_RES_OK; // V6 INSPIRATION: Return empty block, NO ERROR
+    if (!i2c_gateway_is_open() || len > I2C_GATEWAY_MAX_TRANSFER ||
+        read_len == 0 || read_len > I2C_GATEWAY_MAX_TRANSFER) {
+        return result_execution_error(context);
     }
 
-    uint8_t tx_bytes[I2C_GATEWAY_MAX_TRANSFER];
-    for (size_t i = 0; i < tx_len; ++i) {
-        tx_bytes[i] = (uint8_t)write_buffer32[i];
-    }
-
-    // Perform the Atomic I2C Transaction
-    int32_t bytes_read = i2c_gateway_transact(tx_bytes, tx_len, response_buffer, read_len);
-
+    int32_t bytes_read = i2c_gateway_transact(
+        (uint8_t const *)data,
+        len,
+        response_buffer,
+        read_len
+    );
     if (bytes_read < 0) {
-        SCPI_ResultArbitraryBlock(context, response_buffer, 0);
-        return SCPI_RES_OK;
+        return result_execution_error(context);
     }
 
     SCPI_ResultArbitraryBlock(context, response_buffer, (size_t)bytes_read);
