@@ -183,15 +183,17 @@ scpi_result_t scpi_cmd_bus_i2c_read_q(scpi_t *context)
 
 scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
 {
+    uint32_t read_len = 0;
     char const *data = NULL;
     size_t len = 0;
-    uint32_t read_len = 0;
 
-    if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
+    // SCPI RULE: Read the Integer FIRST!
+    if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
         return result_missing_parameter(context);
     }
 
-    if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
+    // SCPI RULE: Arbitrary block must be LAST!
+    if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
         return result_missing_parameter(context);
     }
 
