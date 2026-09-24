@@ -644,26 +644,25 @@ void protocol_task(void)
         g_active_source = PROTOCOL_SOURCE_USB;
         
  
-    if (buffer[0] == 0x04) {
+if (buffer[0] == 0x04) {
             uint8_t command = buffer[1];
             
-           
+            // 0x08 = I2C Read Bulk Command
             if (command == 0x08 && bytes_read >= 5) {
                 uint8_t dev_addr = buffer[2];
                 uint8_t reg_addr = buffer[3];
                 uint8_t read_len = buffer[4];
                 
-            
-                I2C_LL_write(0, dev_addr, &reg_addr, 1, true);
+                // I2C_LL_BUS_0 and 0 timeout (uses safe default)
+                I2C_LL_write(I2C_LL_BUS_0, dev_addr, &reg_addr, 1, true, 0);
                 
-          
                 uint8_t tx_buf[256];
-                I2C_LL_read(0, dev_addr, tx_buf, read_len, false);
+                I2C_LL_read(I2C_LL_BUS_0, dev_addr, tx_buf, read_len, false, 0);
                 
-              
+                // Append V6 Acknowledgement (0x00 = Success)
                 tx_buf[read_len] = 0x00;
                 
-               
+                // Blast back to PC instantly
                 usb_cdc_write(tx_buf, read_len + 1);
             } 
             // 0x09 = I2C Write Bulk Command
@@ -672,8 +671,8 @@ void protocol_task(void)
                 uint8_t write_len = buffer[3];
                 uint8_t *payload = &buffer[4];
                 
-                // Write Data Instantly (Bus 0)
-                I2C_LL_write(0, dev_addr, payload, write_len, false);
+                // I2C_LL_BUS_0 and 0 timeout
+                I2C_LL_write(I2C_LL_BUS_0, dev_addr, payload, write_len, false, 0);
                 
                 // Send ACK (0x00) back to PC
                 uint8_t ack = 0x00;
