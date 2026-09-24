@@ -25,6 +25,7 @@
 #include "platform/platform.h"
 #include "platform/status_led.h"
 #include "platform/usb_cdc.h"
+#include "platform/i2c_ll.h"  // <--- ADDED: Direct access to raw I2C hardware!
 #include "system/transport.h"
 #include "util/logging.h"
 
@@ -637,10 +638,49 @@ void protocol_task(void)
 
     uint8_t buffer[USB_RX_CHUNK_SIZE];
     uint32_t bytes_read = usb_cdc_read(buffer, sizeof(buffer));
+    
     if (bytes_read > 0) {
         status_led_command_received();
         g_active_source = PROTOCOL_SOURCE_USB;
-        SCPI_Input(&g_scpi_context, (char *)buffer, (int)bytes_read);
+        
+ 
+        if (buffer[0] == 0x04) {
+            uint8_t command = buffer[1];
+            
+            if (command == 0x08 && bytes_read >= 5) {
+                uint8_t dev_addr = buffer[2];
+                uint8_t reg_addr = buffer[3];
+                uint8_t read_len = buffer[4];
+                
+                // Write Register Address (No Stop bit)
+                I2C_LL_write(dev_addr, &reg_addr, 1, true);
+                
+                uint8_t tx_buf[256];
+                I2C_LL_read(dev_addr, tx_buf, read_len, false);
+                
+                tx_buf[read_len] = 0x00;
+                
+            
+                usb_cdc_write(tx_buf, read_len + 1);
+            } 
+            // 0x09 = I2C Write Bulk Command
+            else if (command == 0x09 && bytes_read >= 4) {
+                uint8_t dev_addr = buffer[2];
+                uint8_t write_len = buffer[3];
+                uint8_t *payload = &buffer[4];
+                
+                // Write Data Instantly
+                I2C_LL_write(dev_addr, payload, write_len, false);
+                
+                // Send ACK (0x00) back to PC
+                uint8_t ack = 0x00;
+                usb_cdc_write(&ack, 1);
+            }
+        } 
+        else {
+            // Standard SCPI Command - Pass it to the libscpi parser
+            SCPI_Input(&g_scpi_context, (char *)buffer, (int)bytes_read);
+        }
     }
 
     uint8_t wifi_buffer[WIFI_RX_CHUNK_SIZE];
