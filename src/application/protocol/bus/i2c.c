@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
+#include "pico/time.h"
 #include "scpi/error.h"
 #include "scpi/scpi.h"
 
@@ -190,12 +190,10 @@ scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
     char const *data = NULL;
     size_t len = 0;
 
-    // SCPI RULE: Read the Integer FIRST!
     if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
         return result_missing_parameter(context);
     }
 
-    // SCPI RULE: Arbitrary block must be LAST!
     if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
         return result_missing_parameter(context);
     }
@@ -205,14 +203,26 @@ scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
         return result_execution_error(context);
     }
 
-    int32_t bytes_read = i2c_gateway_transact(
-        (uint8_t const *)data,
-        len,
-        response_buffer,
-        read_len
-    );
-    
-    // FIX: Prevent silent failure. If sensor is busy/NACKs, return 0 bytes safely.
+    int32_t bytes_read = -1;
+
+
+    for (int retries = 0; retries < 10; retries++) {
+        bytes_read = i2c_gateway_transact(
+            (uint8_t const *)data,
+            len,
+            response_buffer,
+            read_len
+        );
+        
+        if (bytes_read == read_len) {
+            break; 
+        }
+        
+
+        sleep_ms(3);
+    }
+
+
     if (bytes_read < 0) {
         bytes_read = 0;
     }
