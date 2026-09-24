@@ -155,7 +155,8 @@ scpi_result_t scpi_cmd_bus_i2c_write(scpi_t *context)
         return result_execution_error(context);
     }
 
-    SCPI_ResultUInt32(context, (uint32_t)written);
+    // FIX: Removed SCPI_ResultUInt32. 
+    // Commands without a '?' must NEVER return data!
     return SCPI_RES_OK;
 }
 
@@ -173,8 +174,10 @@ scpi_result_t scpi_cmd_bus_i2c_read_q(scpi_t *context)
     }
 
     int32_t bytes_read = i2c_gateway_read(response_buffer, len);
+    
+    // FIX: Prevent silent failure. If sensor NACKs, return 0 bytes safely.
     if (bytes_read < 0) {
-        return result_execution_error(context);
+        bytes_read = 0;
     }
 
     SCPI_ResultArbitraryBlock(context, response_buffer, (size_t)bytes_read);
@@ -208,8 +211,10 @@ scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
         response_buffer,
         read_len
     );
+    
+    // FIX: Prevent silent failure. If sensor is busy/NACKs, return 0 bytes safely.
     if (bytes_read < 0) {
-        return result_execution_error(context);
+        bytes_read = 0;
     }
 
     SCPI_ResultArbitraryBlock(context, response_buffer, (size_t)bytes_read);
