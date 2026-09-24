@@ -7,7 +7,7 @@
 #include "pico/time.h"
 #include "scpi/error.h"
 #include "scpi/scpi.h"
-
+#include "pico/time.h"
 #include "application/gateway/i2c_commands.h"
 
 static uint8_t response_buffer[I2C_GATEWAY_MAX_TRANSFER];
@@ -190,10 +190,12 @@ scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
     char const *data = NULL;
     size_t len = 0;
 
+    // SCPI RULE: Read the Integer FIRST!
     if (!SCPI_ParamUInt32(context, &read_len, TRUE)) {
         return result_missing_parameter(context);
     }
 
+    // SCPI RULE: Arbitrary block must be LAST!
     if (!SCPI_ParamArbitraryBlock(context, &data, &len, TRUE)) {
         return result_missing_parameter(context);
     }
@@ -205,24 +207,21 @@ scpi_result_t scpi_cmd_bus_i2c_transact_q(scpi_t *context)
 
     int32_t bytes_read = -1;
 
-
-    for (int retries = 0; retries < 10; retries++) {
-        bytes_read = i2c_gateway_transact(
-            (uint8_t const *)data,
-            len,
-            response_buffer,
-            read_len
-        );
+    // ✅ STRICT FIRMWARE CONTROL:
+    // The Pico handles the sensor's physical delay here. It tries up to 15 times.
+    for (int retries = 0; retries < 15; retries++) {
+        bytes_read = i2c_gateway_transact((uint8_t const *)data, len, response_buffer, read_len);
         
         if (bytes_read == read_len) {
-            break; 
+            break; // Sensor is ready and gave us the data!
         }
         
-
-        sleep_ms(3);
+        // Use busy_wait instead of sleep_ms. This keeps the USB connection 
+        // alive and communicating with Dart while we wait for the sensor.
+        busy_wait_us(2000); 
     }
 
-
+    // Prevent silent failure formatting
     if (bytes_read < 0) {
         bytes_read = 0;
     }
